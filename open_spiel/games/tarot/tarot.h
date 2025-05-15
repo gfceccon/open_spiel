@@ -24,7 +24,7 @@
 
 #include "open_spiel/abseil-cpp/absl/types/optional.h"
 #include "open_spiel/games/tarot/cards.h"
-#include "open_spiel/games/tarot/bids.h"
+#include "open_spiel/games/tarot/bid.h"
 #include "open_spiel/spiel.h"
 
 namespace open_spiel
@@ -74,9 +74,7 @@ namespace open_spiel
       int RNG() const;
 
       static inline const std::array<Card, kDeckSize> card_deck_ = InitializeCardDeck();
-      static inline const std::array<Bid, kNumBids> bids_ = InitializeBids();
 
-      const Bid bid_;
       const int num_players_;
       mutable std::mt19937 rng_;
     };
@@ -94,7 +92,7 @@ namespace open_spiel
       Player CurrentPlayer() const override;
       GamePhase CurrentGamePhase() const;
       std::vector<Action> PlayerCards(Player player) const;
-      Bid SelectedBidName() const;
+      Bid SelectedBid() const;
       std::vector<Action> TrickCards() const;
 
       std::vector<Action> LegalActions() const override;
@@ -120,8 +118,9 @@ namespace open_spiel
 
       Player taker_ = kInvalidPlayer;
       Player current_player_ = kInvalidPlayer;
-      std::vector<Player> players_collected_cards_;
+      std::vector<Action> players_collected_cards_;
       std::vector<std::string> players_info_states_;
+      Bid selected_bid_ = Bid::kPass;
 
       GamePhase current_game_phase_ = GamePhase::kCardDealing;
       int card_dealing_seed_ = kDefaultSeed;
@@ -139,6 +138,7 @@ namespace open_spiel
       
       
       void DoApplyActionInCardDealing();
+      bool AnyPlayerWithoutTrump() const;
       void AddPrivateCardsToInfoStates();
       void DoApplyActionInBidding(Action action_id);
       void FinishBiddingPhase(Action action_id);

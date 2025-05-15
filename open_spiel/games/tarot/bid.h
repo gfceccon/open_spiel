@@ -12,36 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef OPEN_SPIEL_GAMES_FRENCH_TAROT_SCORE_H_
-#define OPEN_SPIEL_GAMES_FRENCH_TAROT_SCORE_H_
+#ifndef OPEN_SPIEL_GAMES_FRENCH_TAROT_BIDS_H_
+#define OPEN_SPIEL_GAMES_FRENCH_TAROT_BIDS_H_
 
-#include <array>
+#include <iostream>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "open_spiel/spiel.h"
-#include "open_spiel/games/tarot/cards.h"
-#include "open_spiel/games/tarot/bid.h"
-
-// Pontos necessários para ganhar baseado no número de bouts (0-3)
-inline constexpr std::array<int, 4> pointsNeededPerBouts = {56, 51, 41, 36};
 
 namespace open_spiel
 {
   namespace french_tarot
   {
-    int ScorePointsNeeded(std::vector<Action> hand);
+    inline constexpr int kInvalidBidAction = -1;
+    inline constexpr int kNumBids = 5;
 
-    bool ScoreBidSuccess(std::vector<Action> hand, Bid bid);
+    enum Bid
+    {
+      kPass = 0,       // Pass
+      kPetit = 1,      // Small
+      kGarde = 2,      // Guard
+      kGardeSans = 4,  // Guard without dog
+      kGardeContre = 6 // Guard against
+    };
 
-    double ScoreEstimated(std::vector<Action> hand, Bid bid);
+    Bid BidFromAction(int action_id);
 
-    double ScorePartialScore(std::vector<Action> hand, Bid bid);
+    int BidToMultiplier(Bid bid);
 
-    double ScoreFinalScore(std::vector<Action> hand, Bid bid, bool slam_success, bool poingee_success);
-    
+    bool BidCanMulligan(Bid bid);
+
+    std::string BidToString(Bid bid);
+
+    std::ostream &operator<<(std::ostream &os, Bid bid);
+
   } // namespace french_tarot
 } // namespace open_spiel
 
-#endif // OPEN_SPIEL_GAMES_FRENCH_TAROT_SCORE_H_
+#endif // OPEN_SPIEL_GAMES_FRENCH_TAROT_BIDS_H_

@@ -15,73 +15,110 @@
 #include <algorithm>
 #include <random>
 #include <utility>
+#include <cmath>
 
 #include "open_spiel/games/tarot/score.h"
 #include "open_spiel/games/tarot/cards.h"
+#include "open_spiel/games/tarot/bid.h"
+#include "score.h"
 
 namespace open_spiel
 {
   namespace french_tarot
   {
-    class Score
+
+    int ScorePointsNeeded(std::vector<Action> hand)
     {
-    public:
-      Score(Bid bid, int taker, std::vector<int> team, bool slamCall, bool handfullCall):
-          bid(bid),
-          taker(taker),
-          team(team),
-          slamCall(slamCall),
-          handfullCall(handfullCall) {}
-      const std::string ToString() const;
+      int bouts = ScoreCountBouts(hand);
+      return pointsNeededPerBouts[bouts];
+    }
 
-      int PartialPoints(
-          const bool taker,
-          const std::vector<Action> &actions,
-          const std::array<Card, kDeckSize> &deck)
+    int ScoreCountTrumps(std::vector<Action> hand)
+    {
+      int trumps = 0;
+      for (int i = 0; i < hand.size(); i++)
+        if (CardFromAction(hand[i]).suit == kTrumps)
+          trumps++;
+
+      return trumps;
+    }
+
+    int ScoreCountBouts(std::vector<Action> hand)
+    {
+      int bouts = 0;
+      for (int i = 0; i < hand.size(); i++)
+        if (CardFromAction(hand[i]).is_bout)
+          bouts++;
+
+      return bouts;
+    }
+
+    bool ScoreBidSuccess(std::vector<Action> hand, Bid bid)
+    {
+      int points_needed = ScorePointsNeeded(hand);
+      int points = ScorePartialScore(hand, bid);
+      return points >= points_needed;
+    }
+
+    double ScoreEstimated(std::vector<Action> hand, Bid bid)
+    {
+    }
+
+    double ScorePartialScore(std::vector<Action> hand, Bid bid, bool slam_called, bool poingee_called)
+    {
+    }
+
+    double ScoreFinalScore(std::vector<Action> hand, Bid bid, bool slam_called, int poingee_called)
+    {
+      int points = ScorePartialScore(hand, bid);
+      int points_needed = ScorePointsNeeded(hand);
+      bool bid_successful = ScoreBidSuccess(hand, bid);
+
+      int multiplier = BidToMultiplier(bid);
+      double base_score = std::abs(points - points_needed);
+
+      int slam = 0;
+      if (hand.size() == kDeckSize)
       {
-        float points = 0;
-        int bouts = 0;
-        for (auto const &action : actions)
-        {
-          auto card = deck.at(action);
-          points += card.points;
-          if (card.is_bout)
-            bouts++;
-        }
-
-        int minimum = (points > pointsNeededPerBouts.at(bouts)) ? 1 : -1;
-
-        return static_cast<int>(minimum * round(points));
+        if (slam_called)
+          slam += 400;
+        else
+          slam += 200;
+      }
+      else if (slam_called)
+      {
+        slam = -200;
       }
 
-      int FinalPoints(
-          const bool taker,
-          const std::vector<Action> &actions,
-          const std::array<Card, kDeckSize> &deck)
+      int poingee = 0;
+      if (poingee_called)
       {
-        float points = 0;
-        int handfull = 0;
-        int bouts = 0;
-        for (auto const &action : actions)
-        {
-          auto card = deck.at(action);
-          points += card.points;
-          if (card.suit == CardSuit::kTrumps)
-            handfull++;
-          if (card.is_bout)
-            bouts++;
-        }
-
-        return static_cast<int>(round(points));
+        int trumps = ScoreCountTrumps(hand);
+        if (trumps >= 15 && poingee_called == 15)
+          poingee = 40; // Bônus por poingee
+        else if (trumps >= 13 && poingee_called == 13)
+          poingee = 30; // Bônus por poingee
+        else if (trumps >= 10 && poingee_called == 10)
+          poingee = 20; // Bônus por poingee
       }
 
-    private:
-      Bid bid;
-      int taker;
-      std::vector<int> team;
-      bool slamCall;
-      bool handfullCall;
-    };
+      int petit_au_bout = 0;
+      int last_cards_to_check = std::min(4, static_cast<int>(hand.size()));
+      for (int i = 0; i < last_cards_to_check; i++)
+      {
+        int card_index = hand.size() - 1 - i;
+        Card card = CardFromAction(hand[card_index]);
+        if (card.rank == 1 && card.suit == kTrumps)
+        {
+          petit_au_bout = 10;
+          break;
+        }
+      }
+
+      // Aplicar multiplicador e sinal
+      return (bid_successful ? 1.0 : -1.0) * (base_score * multiplier + poingee + slam + petit_au_bout);
+    }
 
   } // namespace french_tarot
-} // namespace open_spiel
+}
+// namespace open_spiel
