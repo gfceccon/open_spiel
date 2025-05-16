@@ -26,6 +26,15 @@ namespace open_spiel
 {
   namespace french_tarot
   {
+    int ScoreCountBouts(std::vector<Action> hand)
+    {
+      int bouts = 0;
+      for (int i = 0; i < hand.size(); i++)
+        if (CardFromAction(hand[i]).is_bout)
+          bouts++;
+
+      return bouts;
+    }
 
     int ScorePointsNeeded(std::vector<Action> hand)
     {
@@ -43,16 +52,6 @@ namespace open_spiel
       return trumps;
     }
 
-    int ScoreCountBouts(std::vector<Action> hand)
-    {
-      int bouts = 0;
-      for (int i = 0; i < hand.size(); i++)
-        if (CardFromAction(hand[i]).is_bout)
-          bouts++;
-
-      return bouts;
-    }
-
     bool ScoreBidSuccess(std::vector<Action> hand, Bid bid)
     {
       int points_needed = ScorePointsNeeded(hand);
@@ -60,12 +59,31 @@ namespace open_spiel
       return points >= points_needed;
     }
 
-    double ScoreEstimated(std::vector<Action> hand, Bid bid)
+    double ScoreEstimated(std::vector<std::vector<Action>> tricks, Bid bid)
     {
+      int points = 0;
+      for (int i = 0; i < tricks.size(); i++)
+      {
+        auto trick = tricks[i];
+        for (int j = 0; j < trick.size(); j++)
+        {
+          points += ScorePartialScore(trick, bid);
+        }
+      }
+
+      return points;
     }
 
-    double ScorePartialScore(std::vector<Action> hand, Bid bid, bool slam_called, bool poingee_called)
+    double ScorePartialScore(std::vector<Action> hand)
     {
+      int points = 0;
+      for (int i = 0; i < hand.size(); i++)
+      {
+        Card card = CardFromAction(hand[i]);
+        points += card.points;
+      }
+
+      return points;
     }
 
     double ScoreFinalScore(std::vector<Action> hand, Bid bid, bool slam_called, int poingee_called)

@@ -81,6 +81,11 @@ namespace open_spiel
       }
     }
 
+    std::string BidActionToString(int action_id) {
+      Bid bid = BidFromAction(action_id);
+      return BidToString(bid);
+    }
+
     std::ostream &operator<<(std::ostream &os, Bid bid)
     {
       os << BidToString(bid);

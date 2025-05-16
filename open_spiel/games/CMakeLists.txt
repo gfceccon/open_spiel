@@ -185,6 +185,14 @@ set(GAME_SOURCES
   tarok/cards.h
   tarok/contracts.cc
   tarok/contracts.h
+  tarot/tarot.cc
+  tarot/tarot.h
+  tarot/cards.cc
+  tarot/cards.h
+  tarot/bid.cc
+  tarot/bid.h
+  tarot/score.cc
+  tarot/score.h
   tic_tac_toe/tic_tac_toe.cc
   tic_tac_toe/tic_tac_toe.h
   tiny_bridge/tiny_bridge.cc

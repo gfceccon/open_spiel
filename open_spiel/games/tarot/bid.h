@@ -44,6 +44,7 @@ namespace open_spiel
     bool BidCanMulligan(Bid bid);
 
     std::string BidToString(Bid bid);
+    std::string BidActionToString(int action_id);
 
     std::ostream &operator<<(std::ostream &os, Bid bid);
 

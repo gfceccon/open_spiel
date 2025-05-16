@@ -36,15 +36,16 @@ namespace open_spiel
     inline constexpr int kDefaultSeed = -1;
     inline constexpr int kSlamCall = 1;
     inline constexpr int kHandfullCall = 1;
-    inline constexpr int kMaxGameLength = kNumPlayers * (kDeckSize - kDogSize);
+    inline constexpr int kDefaultNumPLayers = 4;
+    inline constexpr int kDefaultDogSize = 6;
 
     enum class GamePhase
     {
       kCardDealing,
       kBidding,
       kMulligan,
-      kTaker, // Le Preneur
-      kTeam,  // Le Defenseur
+      kTaker,
+      kTeam,
       kFinished,
     };
 
@@ -55,28 +56,39 @@ namespace open_spiel
     public:
       explicit FrenchTarotGame(const GameParameters &params);
 
-      int NumDistinctActions() const override;
+      int NumDistinctActions() const override { return kDeckSize; };
       std::unique_ptr<State> NewInitialState() const override;
       std::unique_ptr<TarotState> NewInitialTarotState() const;
-      int MaxChanceOutcomes() const override;
-      int NumPlayers() const override;
-      double MinUtility() const override;
-      double MaxUtility() const override;
-      int MaxGameLength() const override;
+      int MaxChanceOutcomes() const override { return 1; };
+      int NumPlayers() const override { return num_players_; };
+      double MinUtility() const override { return -1.0; };
+      double MaxUtility() const override { return 1.0; };
+      int MaxGameLength() const override { return num_players_ * (kDeckSize - dog_size_); };
 
       std::unique_ptr<State> DeserializeState(
           const std::string &str) const override;
-      std::string GetRNGState() const override;
-      void SetRNGState(const std::string &rng_state) const override;
+      std::string GetRNGState() const override
+      {
+        std::ostringstream rng_stream;
+        rng_stream << rng_;
+        return rng_stream.str();
+      };
+      void SetRNGState(const std::string &rng_state) const override
+      {
+        std::istringstream rng_stream(rng_state);
+        rng_stream >> rng_;
+      };
 
     private:
       friend class TarotState;
-      int RNG() const;
-
+      
       static inline const std::array<Card, kDeckSize> card_deck_ = InitializeCardDeck();
-
+      
+      const int dog_size_;
       const int num_players_;
+
       mutable std::mt19937 rng_;
+      int RNG() const { return rng_(); }
     };
 
     using TrickWinnerAndAction = std::tuple<Player, Action>;
@@ -88,11 +100,10 @@ namespace open_spiel
     public:
       explicit TarotState(std::shared_ptr<const Game> game);
 
-      bool IsTerminal() const override;
+      bool IsTerminal() const override { return current_game_phase_ == GamePhase::kFinished; };
       Player CurrentPlayer() const override;
       GamePhase CurrentGamePhase() const;
       std::vector<Action> PlayerCards(Player player) const;
-      Bid SelectedBid() const;
       std::vector<Action> TrickCards() const;
 
       std::vector<Action> LegalActions() const override;
@@ -111,22 +122,28 @@ namespace open_spiel
       void DoApplyAction(Action action_id) override;
 
     private:
+      int round_ = 0;
       std::vector<Action> dog_;
       std::vector<Action> players_bids_;
-      std::vector<Action> players_trick_cards_;
+      std::vector<Action> current_trick_;
+      std::vector<std::vector<Action>> players_tricks_;
       std::vector<std::vector<Action>> players_cards_;
+      std::vector<Action> mulligan_performed_;
 
+      Bid bid_ = Bid::kPass;
+      bool slam_call_ = false;
+      bool handful_call_ = false;
       Player taker_ = kInvalidPlayer;
       Player current_player_ = kInvalidPlayer;
-      std::vector<Action> players_collected_cards_;
-      std::vector<std::string> players_info_states_;
-      Bid selected_bid_ = Bid::kPass;
+      std::vector<int> public_information_;
 
       GamePhase current_game_phase_ = GamePhase::kCardDealing;
       int card_dealing_seed_ = kDefaultSeed;
 
       std::shared_ptr<const FrenchTarotGame> tarot_parent_game_;
       friend class FrenchTarotGame;
+
+      std::vector<std::string> players_info_states_;
 
       void NextPlayer();
 
@@ -135,21 +152,18 @@ namespace open_spiel
       std::vector<Action> LegalActionsInTricksPlaying() const;
       std::vector<Action> LegalActionsInTricksPlayingFollowing() const;
       std::tuple<bool, bool> CanFollowSuitOrCantButHasTrump() const;
-      
-      
+
       void DoApplyActionInCardDealing();
       bool AnyPlayerWithoutTrump() const;
       void AddPrivateCardsToInfoStates();
       void DoApplyActionInBidding(Action action_id);
       void FinishBiddingPhase(Action action_id);
 
-      
       void StartTricksPlayingPhase();
       void DoApplyActionInTricksPlaying(Action action_id);
       TrickWinnerAndAction ResolveTrickWinnerAndWinningAction() const;
       Player TrickCardsIndexToPlayer(int index) const;
       void ResolveTrick();
-
 
       static bool ActionInActions(Action action_id,
                                   const std::vector<Action> &actions);

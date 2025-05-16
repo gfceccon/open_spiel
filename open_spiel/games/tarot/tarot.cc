@@ -26,7 +26,7 @@ namespace open_spiel
   namespace french_tarot
   {
 
-    const GameType kGameType{"tarot",                      // short_name
+    const GameType kGameType{"french_tarot",               // short_name
                              "French Tarot for 4 Players", // long_name
                              GameType::Dynamics::kSequential,
                              GameType::ChanceMode::kExplicitStochastic,
@@ -39,7 +39,9 @@ namespace open_spiel
                              false,       // provides_information_state_tensor
                              false,       // provides_observation_string
                              false,       // provides_observation_tensor
-                             {}};         // parameter_specification};
+                             {{"players", GameParameter(kDefaultNumPLayers)},
+                              {"dog_size", GameParameter(kDefaultDogSize)},
+                              {"rng_seed", GameParameter(kDefaultSeed)}}}; // parameter_specification};
 
     std::shared_ptr<const Game> Factory(const GameParameters &params)
     {
@@ -52,16 +54,19 @@ namespace open_spiel
 
     FrenchTarotGame::FrenchTarotGame(const GameParameters &params)
         : Game(kGameType, params),
-          num_players_(ParameterValue<int>("players"))
+          num_players_(ParameterValue<int>("players")),
+          dog_size_(ParameterValue<int>("dog_size")),
+          rng_(std::mt19937(
+              ParameterValue<int>("rng_seed") == -1
+                  ? std::time(0)
+                  : ParameterValue<int>("rng_seed")))
     {
-      rng_ = std::mt19937(
-          ParameterValue<int>("rng_seed") == -1
-              ? std::time(0)
-              : ParameterValue<int>("rng_seed"));
-    }
+      if (num_players_ != 4)
+        SpielFatalError(absl::StrCat("Current game implementation only supports 4 players "));
 
-    int FrenchTarotGame::NumDistinctActions() const { return kDeckSize; }
-    int FrenchTarotGame::MaxChanceOutcomes() const { return 1; }
+      if (dog_size_ != 6)
+        SpielFatalError(absl::StrCat("Current game implementation only supports 4 players "));
+    }
 
     std::unique_ptr<State> FrenchTarotGame::NewInitialState() const
     {
@@ -73,102 +78,6 @@ namespace open_spiel
       return std::make_unique<TarotState>(shared_from_this());
     }
 
-    int FrenchTarotGame::NumPlayers() const { return num_players_; }
-
-    double FrenchTarotGame::MinUtility() const { return -1.0; }
-
-    double FrenchTarotGame::MaxUtility() const { return 1.0; }
-
-    int FrenchTarotGame::MaxGameLength() const { return kMaxGameLength; }
-
-    std::unique_ptr<State> FrenchTarotGame::DeserializeState(
-        const std::string &str) const
-    {
-      std::unique_ptr<TarotState> state = NewInitialTarotState();
-
-      std::vector<std::string> parts = absl::StrSplit(str, ';');
-      if (parts.empty())
-      {
-        SpielFatalError("Expected at least 1 part in serialized state.");
-      }
-
-      // Decomposição da primeira parte (informações gerais)
-      std::vector<std::string> general_parts = absl::StrSplit(parts[0], ',');
-      if (general_parts.size() < 4)
-      {
-        SpielFatalError("Expected at least 4 elements in the first part of the serialized state.");
-      }
-
-      // Primeiro vem a fase do jogo, jogador atual, tomador e seed
-      state->current_game_phase_ = static_cast<GamePhase>(std::stoi(general_parts[0]));
-      state->current_player_ = std::stoi(general_parts[1]);
-      state->taker_ = std::stoi(general_parts[2]);
-      state->card_dealing_seed_ = std::stoi(general_parts[3]);
-
-      // O resto são as cartas do dog
-      for (int i = 4; i < general_parts.size() - 1; ++i)
-      {
-        state->dog_.push_back(std::stoi(general_parts[i]));
-      }
-
-      // Processar lances, se houver uma segunda parte
-      if (parts.size() > 1)
-      {
-        std::vector<std::string> bids_parts = absl::StrSplit(parts[1], ',');
-        for (int i = 0; i < bids_parts.size() - 1 && i < state->players_bids_.size(); ++i)
-        {
-          state->players_bids_[i] = std::stoi(bids_parts[i]);
-        }
-      }
-
-      // Processar cartas do truque, se houver uma terceira parte
-      if (parts.size() > 2)
-      {
-        std::vector<std::string> trick_parts = absl::StrSplit(parts[2], ',');
-        for (int i = 0; i < trick_parts.size() - 1; ++i)
-        {
-          state->players_trick_cards_.push_back(std::stoi(trick_parts[i]));
-        }
-      }
-
-      // Processar cartas dos jogadores, se houver partes suficientes
-      for (int player = 0; player < num_players_ && player + 3 < parts.size(); ++player)
-      {
-        std::vector<std::string> cards_parts = absl::StrSplit(parts[player + 3], ',');
-        for (int i = 0; i < cards_parts.size() - 1; ++i)
-        {
-          state->players_cards_[player].push_back(std::stoi(cards_parts[i]));
-        }
-      }
-
-      // Processar cartas coletadas, se houver uma parte final
-      if (parts.size() > num_players_ + 3)
-      {
-        std::vector<std::string> collected_parts = absl::StrSplit(parts[num_players_ + 3], ',');
-        for (int i = 0; i < collected_parts.size() - 1; ++i)
-        {
-          state->players_collected_cards_.push_back(std::stoi(collected_parts[i]));
-        }
-      }
-
-      return state;
-    }
-
-    std::string FrenchTarotGame::GetRNGState() const
-    {
-      std::ostringstream rng_stream;
-      rng_stream << rng_;
-      return rng_stream.str();
-    }
-
-    void FrenchTarotGame::SetRNGState(const std::string &rng_state) const
-    {
-      std::istringstream rng_stream(rng_state);
-      rng_stream >> rng_;
-    }
-
-    int FrenchTarotGame::RNG() const { return rng_(); }
-
     TarotState::TarotState(std::shared_ptr<const Game> game)
         : State(game),
           tarot_parent_game_(std::static_pointer_cast<const FrenchTarotGame>(game))
@@ -179,6 +88,7 @@ namespace open_spiel
       players_cards_.insert(players_cards_.end(), tarot_parent_game_->num_players_, std::vector<Action>());
       players_info_states_.reserve(tarot_parent_game_->num_players_);
       players_info_states_.insert(players_info_states_.end(), tarot_parent_game_->num_players_, "");
+      mulligan_performed_.reserve(tarot_parent_game_->dog_size_);
     }
 
     Player TarotState::CurrentPlayer() const
@@ -200,13 +110,6 @@ namespace open_spiel
       }
     }
 
-    bool TarotState::IsTerminal() const
-    {
-      return current_game_phase_ == GamePhase::kFinished;
-    }
-
-    GamePhase TarotState::CurrentGamePhase() const { return current_game_phase_; }
-
     std::vector<Action> TarotState::PlayerCards(Player player) const
     {
       if (current_game_phase_ == GamePhase::kCardDealing)
@@ -214,19 +117,9 @@ namespace open_spiel
       return players_cards_.at(player);
     }
 
-    Bid TarotState::SelectedBid() const
-    {
-      if (current_game_phase_ == GamePhase::kCardDealing ||
-          current_game_phase_ == GamePhase::kBidding)
-      {
-        return Bid::kPass;
-      }
-      return selected_bid_;
-    }
-
     std::vector<Action> TarotState::TrickCards() const
     {
-      return players_trick_cards_;
+      return current_trick_;
     }
 
     std::vector<Action> TarotState::LegalActions() const
@@ -239,7 +132,7 @@ namespace open_spiel
       switch (current_game_phase_)
       {
       case GamePhase::kCardDealing:
-        return {0}; // Apenas uma ação é possível na distribuição de cartas
+        return {0};
       case GamePhase::kBidding:
         return LegalActionsInBidding();
       case GamePhase::kMulligan:
@@ -285,15 +178,12 @@ namespace open_spiel
 
     std::vector<Action> TarotState::LegalActionsInTricksPlaying() const
     {
-      // Se este é o primeiro jogador a jogar no truque
-      if (players_trick_cards_.empty())
+      if (current_trick_.empty())
       {
-        // Pode jogar qualquer carta da mão
         return players_cards_[current_player_];
       }
       else
       {
-        // Caso contrário, precisa seguir as regras de como seguir o naipe
         return LegalActionsInTricksPlayingFollowing();
       }
     }
@@ -306,14 +196,14 @@ namespace open_spiel
 
       for (auto card_action : players_cards_[current_player_])
       {
-        const Card &card = ActionToCard(card_action);
+        const Card &card = CardFromAction(card_action);
         // Não permitir descarte de trunfos (cartas da suit kTrumps) ou reis (rank 14)
-        if (card.suit != CardSuit::kTrumps && card.rank != 14)
-        {
+        // Não permitir descarte de cartas que já foram descartadas
+        if (card.suit != CardSuit::kTrumps &&
+            card.rank != 14 &&
+            !std::any_of(mulligan_performed_.begin(), mulligan_performed_.end(), card_action))
           legal_actions.push_back(card_action);
-        }
       }
-
       return legal_actions;
     }
 
@@ -326,12 +216,12 @@ namespace open_spiel
       if (can_follow_suit)
       {
         // Filtra cartas da mão para incluir apenas as do mesmo naipe
-        Action first_card_action = players_trick_cards_[0];
-        const Card &first_card = ActionToCard(first_card_action);
+        Action first_card_action = current_trick_[0];
+        const Card &first_card = CardFromAction(first_card_action);
 
         for (auto card_action : players_cards_[current_player_])
         {
-          const Card &card = ActionToCard(card_action);
+          const Card &card = CardFromAction(card_action);
           if (card.suit == first_card.suit)
           {
             legal_actions.push_back(card_action);
@@ -344,7 +234,7 @@ namespace open_spiel
         // Filtra cartas da mão para incluir apenas os trunfos
         for (auto card_action : players_cards_[current_player_])
         {
-          const Card &card = ActionToCard(card_action);
+          const Card &card = CardFromAction(card_action);
           if (card.suit == CardSuit::kTrumps)
           {
             legal_actions.push_back(card_action);
@@ -362,13 +252,13 @@ namespace open_spiel
 
     std::tuple<bool, bool> TarotState::CanFollowSuitOrCantButHasTrump() const
     {
-      if (players_trick_cards_.empty())
+      if (current_trick_.empty())
       {
         SpielFatalError("Cannot check if player can follow suit in an empty trick");
       }
 
-      Action first_card_action = players_trick_cards_[0];
-      const Card &first_card = ActionToCard(first_card_action);
+      Action first_card_action = current_trick_[0];
+      const Card &first_card = CardFromAction(first_card_action);
       CardSuit lead_suit = first_card.suit;
 
       bool can_follow_suit = false;
@@ -377,7 +267,7 @@ namespace open_spiel
       // Verificar se o jogador tem cartas do naipe que está sendo jogado
       for (auto card_action : players_cards_[current_player_])
       {
-        const Card &card = ActionToCard(card_action);
+        const Card &card = CardFromAction(card_action);
         if (card.suit == lead_suit)
         {
           can_follow_suit = true;
@@ -402,9 +292,7 @@ namespace open_spiel
       {
         // Na fase de leilão, retorne o nome do lance
         if (action_id >= 0 && action_id < kNumBids)
-        {
-          return BidToString(ActionToBid(action_id));
-        }
+          return BidActionToString(action_id);
       }
       else
       {
@@ -419,7 +307,7 @@ namespace open_spiel
     {
       if (action_id >= 0 && action_id < kDeckSize)
       {
-        return ActionToCard(action_id).long_name;
+        return CardFromAction(action_id).long_name;
       }
       return absl::StrCat("Invalid card action: ", action_id);
     }
@@ -444,7 +332,8 @@ namespace open_spiel
         DoApplyActionInBidding(action_id);
         break;
       case GamePhase::kMulligan:
-        // Implementação a ser adicionada
+        mulligan_performed_.push_back(action_id);
+        LegalActionsInMulligan();
         break;
       case GamePhase::kTaker:
         // Implementação a ser adicionada
@@ -463,9 +352,7 @@ namespace open_spiel
       // Distribuição implícita das cartas através do RNG
       do
       {
-        // O seed é persistido para fins de serialização
         card_dealing_seed_ = tarot_parent_game_->RNG();
-        // Mãos sem trunfos são ilegais no Tarot Francês
         std::tie(dog_, players_cards_) =
             DealCards(tarot_parent_game_->num_players_, card_dealing_seed_);
       } while (AnyPlayerWithoutTrump());
@@ -505,7 +392,7 @@ namespace open_spiel
 
       std::string bid_str = "\nPlayer ";
       absl::StrAppend(&bid_str, current_player_, " bids: ");
-      absl::StrAppend(&bid_str, BidToString(ActionToBid(action_id)));
+      absl::StrAppend(&bid_str, BidActionToString(action_id));
       AppendToAllInformationStates(bid_str);
 
       // Verificar se todos os jogadores exceto o atual passaram
@@ -538,11 +425,11 @@ namespace open_spiel
     void TarotState::FinishBiddingPhase(Action action_id)
     {
       taker_ = current_player_;
-      selected_bid_ = ActionToBid(action_id);
+      bid_ = BidFromAction(action_id);
 
       std::string bid_str = "\nBidding phase finished. Player ";
       absl::StrAppend(&bid_str, taker_, " is the taker with bid: ");
-      absl::StrAppend(&bid_str, BidToString(selected_bid_));
+      absl::StrAppend(&bid_str, BidToString(bid_));
       AppendToAllInformationStates(bid_str);
 
       // No Tarot Francês, após o leilão, pode haver uma fase de mulligan
@@ -564,7 +451,7 @@ namespace open_spiel
     void TarotState::DoApplyActionInTricksPlaying(Action action_id)
     {
       // Adicionar a carta jogada à lista de cartas da jogada atual
-      players_trick_cards_.push_back(action_id);
+      current_trick_.push_back(action_id);
 
       // Remover a carta da mão do jogador
       auto it = std::find(players_cards_[current_player_].begin(),
@@ -581,11 +468,11 @@ namespace open_spiel
 
       std::string play_str = "\nPlayer ";
       absl::StrAppend(&play_str, current_player_, " plays: ");
-      absl::StrAppend(&play_str, ActionToCard(action_id).long_name);
+      absl::StrAppend(&play_str, CardFromAction(action_id).long_name);
       AppendToAllInformationStates(play_str);
 
       // Se todos os jogadores já jogaram neste truque
-      if (players_trick_cards_.size() == tarot_parent_game_->num_players_)
+      if (current_trick_.size() == tarot_parent_game_->num_players_)
       {
         ResolveTrick();
       }
@@ -619,18 +506,18 @@ namespace open_spiel
       Action winning_action = std::get<1>(winner_info);
 
       // Adicionar as cartas do truque à pilha de cartas conquistadas pelo vencedor
-      for (auto card_action : players_trick_cards_)
+      for (auto card_action : current_trick_)
       {
-        players_collected_cards_.push_back(card_action);
+        players_tricks_[winner].push_back(card_action);
       }
 
       std::string trick_str = "\nPlayer ";
       absl::StrAppend(&trick_str, winner, " wins the trick with card: ");
-      absl::StrAppend(&trick_str, ActionToCard(winning_action).long_name);
+      absl::StrAppend(&trick_str, CardFromAction(winning_action).long_name);
       AppendToAllInformationStates(trick_str);
 
       // Limpar as cartas do truque atual
-      players_trick_cards_.clear();
+      current_trick_.clear();
 
       // O vencedor inicia o próximo truque
       current_player_ = winner;
@@ -638,54 +525,41 @@ namespace open_spiel
 
     TrickWinnerAndAction TarotState::ResolveTrickWinnerAndWinningAction() const
     {
-      if (players_trick_cards_.empty())
+      if (current_trick_.empty())
       {
         SpielFatalError("Cannot resolve winner of an empty trick.");
       }
 
-      Action first_card_action = players_trick_cards_[0];
-      const Card &first_card = ActionToCard(first_card_action);
+      Action first_card_action = current_trick_[0];
+      const Card &first_card = CardFromAction(first_card_action);
       CardSuit lead_suit = first_card.suit;
 
       Action winning_action = first_card_action;
       Player winning_player = TrickCardsIndexToPlayer(0);
-      // Store the index of the winning card instead of a reference
       int winning_card_index = 0;
 
       // Verificar cada carta jogada
-      for (int i = 1; i < players_trick_cards_.size(); i++)
+      for (int i = 1; i < current_trick_.size(); i++)
       {
-        Action current_action = players_trick_cards_[i];
-        const Card &current_card = ActionToCard(current_action);
-        const Card &winning_card = ActionToCard(players_trick_cards_[winning_card_index]);
-
-        // Regras de avaliação para o jogo French Tarot:
-        // 1. Trunfo vence qualquer outra carta exceto trunfo maior
-        // 2. Se o jogador não seguiu naipe, ele não pode vencer
-        // 3. Se naipe seguido, carta mais alta vence
+        Action current_action = current_trick_[i];
+        const Card &current_card = CardFromAction(current_action);
+        const Card &winning_card = CardFromAction(current_trick_[winning_card_index]);
 
         bool current_wins = false;
-
-        // Se a carta atual é um trunfo
         if (current_card.suit == CardSuit::kTrumps)
         {
-          // Se a carta vencedora não é um trunfo, ou se é um trunfo menor
           if (winning_card.suit != CardSuit::kTrumps ||
-              (winning_card.suit == CardSuit::kTrumps && current_card.rank > winning_card.rank))
+              (winning_card.suit == CardSuit::kTrumps &&
+               current_card.rank > winning_card.rank))
           {
             current_wins = true;
           }
         }
-        // Se a carta atual é do mesmo naipe que o lead
-        else if (current_card.suit == lead_suit)
+        else if (current_card.suit == lead_suit &&
+                 current_card.rank > winning_card.rank)
         {
-          // Se a carta vencedora não é um trunfo
-          if (winning_card.suit == lead_suit && current_card.rank > winning_card.rank)
-          {
-            current_wins = true;
-          }
+          current_wins = true;
         }
-        // Caso contrário, a carta não pode vencer
 
         if (current_wins)
         {
@@ -700,8 +574,6 @@ namespace open_spiel
 
     Player TarotState::TrickCardsIndexToPlayer(int index) const
     {
-      // O jogador que inicia o truque é aquele que ganhou o truque anterior
-      // Os jogadores jogam em ordem sequencial a partir dele
       Player starting_player = current_player_;
       Player player = (starting_player + index) % tarot_parent_game_->num_players_;
       return player;
@@ -709,21 +581,48 @@ namespace open_spiel
 
     std::vector<double> TarotState::Returns() const
     {
-      if (!IsTerminal())
+      if (IsTerminal())
+      {
+        std::vector<double> points(tarot_parent_game_->num_players_, 0.0);
+        double score = ScoreFinalScore(players_tricks_[taker_], bid_, slam_call_, handful_call_);
+        for (int i = 0; i < tarot_parent_game_->num_players_; i++)
+        {
+          if (i == taker_)
+            points[i] = score * (tarot_parent_game_->num_players_ - 1.0);
+          else
+            points[i] = -score;
+        }
+        return points;
+      }
+
+      // Se o jogo está em bidding, retorna 0 para todos os jogadores
+      if (current_game_phase_ == GamePhase::kBidding)
       {
         return std::vector<double>(tarot_parent_game_->num_players_, 0.0);
       }
-      // Utiliza a função simplificada
-      double taker_points = SumCardPoints(players_collected_cards_, tarot_parent_game_->card_deck_);
-      int bouts = CountBouts(players_collected_cards_, tarot_parent_game_->card_deck_);
-      bool slam_successful = players_collected_cards_.size() == kDeckSize - kDogSize;
-      return SimpleTarotScore(
-          taker_points,
-          selected_bid_,
-          bouts,
-          taker_,
-          tarot_parent_game_->num_players_,
-          slam_successful);
+
+      // Se o jogo está em tricks playing, retorna 0 para todos os jogadores
+      if (current_game_phase_ == GamePhase::kTaker ||
+          current_game_phase_ == GamePhase::kTeam)
+      {
+        std::vector<double> points(tarot_parent_game_->num_players_, 0.0);
+        for (int i = 0; i < tarot_parent_game_->num_players_; i++)
+        {
+          int player_points = 0;
+          for (auto card_action : players_tricks_[i])
+          {
+            const Card &card = tarot_parent_game_->card_deck_.at(card_action);
+            player_points += card.points;
+          }
+          points[i] = player_points;
+        }
+        return points;
+      }
+
+      // Se o jogo está em finished, retorna os pontos finais
+
+      return std::vector<double>(tarot_parent_game_->num_players_, 0.0);
+      auto hand = players_cards_[current_player_];
     }
 
     std::string TarotState::InformationStateString(Player player) const
@@ -749,7 +648,7 @@ namespace open_spiel
       absl::StrAppend(&result, "\nDog: ");
       for (auto card_action : dog_)
       {
-        const Card &card = ActionToCard(card_action);
+        const Card &card = CardFromAction(card_action);
         absl::StrAppend(&result, card.long_name, ", ");
       }
 
@@ -758,75 +657,19 @@ namespace open_spiel
         absl::StrAppend(&result, "\nPlayer ", i, " cards: ");
         for (auto card_action : players_cards_[i])
         {
-          const Card &card = ActionToCard(card_action);
+          const Card &card = CardFromAction(card_action);
           absl::StrAppend(&result, card.long_name, ", ");
         }
       }
 
-      if (!players_trick_cards_.empty())
+      if (!current_trick_.empty())
       {
         absl::StrAppend(&result, "\nCurrent trick: ");
-        for (auto card_action : players_trick_cards_)
+        for (auto card_action : current_trick_)
         {
-          const Card &card = ActionToCard(card_action);
+          const Card &card = CardFromAction(card_action);
           absl::StrAppend(&result, card.long_name, ", ");
         }
-      }
-
-      return result;
-    }
-
-    std::string TarotState::Serialize() const
-    {
-      std::string result;
-
-      // Serializar fase do jogo
-      absl::StrAppend(&result, static_cast<int>(current_game_phase_), ",");
-
-      // Serializar jogador atual
-      absl::StrAppend(&result, current_player_, ",");
-
-      // Serializar tomador
-      absl::StrAppend(&result, taker_, ",");
-
-      // Serializar seed de distribuição de cartas
-      absl::StrAppend(&result, card_dealing_seed_, ",");
-
-      // Serializar cachorro
-      for (auto card_action : dog_)
-      {
-        absl::StrAppend(&result, card_action, ",");
-      }
-      absl::StrAppend(&result, ";");
-
-      // Serializar lances dos jogadores
-      for (auto bid : players_bids_)
-      {
-        absl::StrAppend(&result, bid, ",");
-      }
-      absl::StrAppend(&result, ";");
-
-      // Serializar cartas do truque atual
-      for (auto card_action : players_trick_cards_)
-      {
-        absl::StrAppend(&result, card_action, ",");
-      }
-      absl::StrAppend(&result, ";");
-
-      // Serializar cartas dos jogadores
-      for (int i = 0; i < tarot_parent_game_->num_players_; i++)
-      {
-        for (auto card_action : players_cards_[i])
-        {
-          absl::StrAppend(&result, card_action, ",");
-        }
-        absl::StrAppend(&result, ";");
-      }
-
-      // Serializar cartas coletadas
-      for (auto card_action : players_collected_cards_)
-      {
-        absl::StrAppend(&result, card_action, ",");
       }
 
       return result;
@@ -876,11 +719,6 @@ namespace open_spiel
       }
     }
 
-    const Card &TarotState::ActionToCard(Action action_id) const
-    {
-      return tarot_parent_game_->card_deck_.at(action_id);
-    }
-
     void TarotState::AppendToAllInformationStates(const std::string &appendix)
     {
       for (int i = 0; i < tarot_parent_game_->num_players_; i++)
@@ -893,6 +731,108 @@ namespace open_spiel
                                               const std::string &appendix)
     {
       absl::StrAppend(&players_info_states_.at(player), appendix);
+    }
+
+    std::string TarotState::Serialize() const
+    {
+      std::string result;
+
+      // Serializar fase do jogo
+      absl::StrAppend(&result, static_cast<int>(current_game_phase_), ",");
+
+      // Serializar jogador atual
+      absl::StrAppend(&result, current_player_, ",");
+
+      // Serializar tomador
+      absl::StrAppend(&result, taker_, ",");
+
+      // Serializar seed de distribuição de cartas
+      absl::StrAppend(&result, card_dealing_seed_, ",");
+
+      // Serializar lances dos jogadores
+      for (auto bid : players_bids_)
+      {
+        absl::StrAppend(&result, bid, ",");
+      }
+      absl::StrAppend(&result, ";");
+
+      // Serializar cartas dos jogadores
+      for (int i = 0; i < tarot_parent_game_->num_players_; i++)
+      {
+        for (auto card_action : players_cards_[i])
+        {
+          absl::StrAppend(&result, card_action, ",");
+        }
+        absl::StrAppend(&result, ";");
+      }
+
+      // Serializar cachorro
+      for (auto card_action : dog_)
+      {
+        absl::StrAppend(&result, card_action, ",");
+      }
+      absl::StrAppend(&result, ";");
+
+      return result;
+    }
+
+    std::unique_ptr<State> FrenchTarotGame::DeserializeState(
+        const std::string &str) const
+    {
+      std::unique_ptr<TarotState> state = NewInitialTarotState();
+
+      std::vector<std::string> parts = absl::StrSplit(str, ';');
+      if (parts.empty())
+      {
+        SpielFatalError("Expected at least 1 part in serialized state.");
+      }
+
+      // Decomposição da primeira parte (informações gerais)
+      std::vector<std::string> general_parts = absl::StrSplit(parts[0], ',');
+      if (general_parts.size() < 4)
+      {
+        SpielFatalError("Expected at least 4 elements in the first part of the serialized state.");
+      }
+
+      // Primeiro vem a fase do jogo, jogador atual, tomador e seed
+      state->current_game_phase_ = static_cast<GamePhase>(std::stoi(general_parts[0]));
+      state->current_player_ = std::stoi(general_parts[1]);
+      state->taker_ = std::stoi(general_parts[2]);
+      state->card_dealing_seed_ = std::stoi(general_parts[3]);
+
+      // O resto são as cartas do dog
+      for (int i = dog_size_; i < general_parts.size() - 1; ++i)
+      {
+        state->dog_.push_back(std::stoi(general_parts[i]));
+      }
+
+      // Processar lances, se houver uma segunda parte
+      if (parts.size() > 1)
+      {
+        std::vector<std::string> bids_parts = absl::StrSplit(parts[1], ',');
+        for (int i = 0; i < bids_parts.size() - 1 && i < state->players_bids_.size(); ++i)
+        {
+          state->players_bids_[i] = std::stoi(bids_parts[i]);
+        }
+      }
+
+      // Processar cartas dos jogadores, se houver partes suficientes
+      for (int player = 0; player < num_players_ && player < parts.size(); ++player)
+      {
+        std::vector<std::string> cards_parts = absl::StrSplit(parts[player], ',');
+        for (int i = 0; i < cards_parts.size() - 1; ++i)
+        {
+          state->players_cards_[player].push_back(std::stoi(cards_parts[i]));
+        }
+
+        std::vector<std::string> dog_parts = absl::StrSplit(parts[num_players_ + 1], ',');
+        for (int i = 0; i < dog_parts.size() - 1; ++i)
+        {
+          state->dog_.push_back(std::stoi(dog_parts[i]));
+        }
+      }
+
+      return state;
     }
 
     std::ostream &operator<<(std::ostream &os, const GamePhase &game_phase)
@@ -919,52 +859,6 @@ namespace open_spiel
         return "Finished";
       }
       return "Unknown phase";
-    }
-
-    // Função auxiliar para contar o número de bouts em um conjunto de cartas
-    int CountBouts(const std::vector<Action> &cards, const std::array<Card, kDeckSize> &deck)
-    {
-      int bouts = 0;
-      for (auto card_action : cards)
-      {
-        const Card &card = deck.at(card_action);
-        if (card.is_bout)
-        {
-          bouts++;
-        }
-      }
-      return bouts;
-    }
-
-    // Função auxiliar para somar os pontos de um conjunto de cartas
-    double SumCardPoints(const std::vector<Action> &cards, const std::array<Card, kDeckSize> &deck)
-    {
-      double points = 0.0;
-      for (auto card_action : cards)
-      {
-        const Card &card = deck.at(card_action);
-        points += card.points;
-      }
-      return points;
-    }
-
-    // Calcula o alvo de pontos baseado no número de bouts
-    double CalculateTarget(int bouts)
-    {
-      // No Tarot Francês, o alvo de pontos depende do número de bouts capturados
-      switch (bouts)
-      {
-      case 0:
-        return 56.0; // Sem bouts
-      case 1:
-        return 51.0; // 1 bout
-      case 2:
-        return 41.0; // 2 bouts
-      case 3:
-        return 36.0; // 3 bouts
-      default:
-        return 56.0; // Caso padrão (não deve acontecer no jogo normal)
-      }
     }
 
   } // namespace french_tarot
